@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>X Realistic AI Image Timeline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, sans-serif; background:#15202b; color:#fff; margin:0; padding:20px; }
+  h1 { font-size:18px; }
+  .meta { color:#8899a6; font-size:12px; margin-bottom:20px; }
+  .post { max-width:550px; margin:0 auto 20px; background:#192734; border-radius:12px; overflow:hidden; }
+</style>
+</head>
+<body>
+<h1>X Realistic AI Image Timeline</h1>
+<div class="meta" id="meta">読み込み中...</div>
+<div id="timeline"></div>
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<script>
+fetch('posts.json?' + Date.now())
+  .then(r => r.json())
+  .then(posts => {
+    document.getElementById('meta').textContent = `${posts.length}件 / 最終更新: ${posts[0]?.fetched_at?.slice(0,10) || '-'}`;
+    const tl = document.getElementById('timeline');
+    posts.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'post';
+      div.innerHTML = `<blockquote class="twitter-tweet" data-theme="dark"><a href="${p.url}"></a></blockquote>`;
+      tl.appendChild(div);
+    });
+    if (window.twttr) window.twttr.widgets.load();
+  })
+  .catch(e => document.getElementById('meta').textContent = '読み込み失敗: ' + e);
+</script>
+</body>
+</html>
