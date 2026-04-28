@@ -1,16 +1,16 @@
 import os
 import json
-import asyncio
 import time
 import requests
 import google.generativeai as genai
-from twikit import Client
+from tweety import TwitterAsync
 from datetime import datetime, timezone
+import asyncio
 
 # ===== 設定 =====
 HASHTAGS = ["#AIart", "#AIイラスト", "#AIphotography", "#StableDiffusion", "#midjourney"]
 LANGUAGES = ["ja", "en"]
-MAX_PER_TAG = 40   # 1タグあたり取得件数
+MAX_PER_TAG = 40
 OUTPUT = "docs/posts.json"
 
 PROMPT = """この画像を見て判定してください。
@@ -34,13 +34,13 @@ def judge_image(image_url: str) -> bool:
         print(f"judge error: {e}")
         return False
 
-# ===== X =====
+# ===== X (tweety-ns) =====
 async def crawl():
-    client = Client('en-US')
-    await client.login(
-        auth_info_1=os.environ["X_USERNAME"],
-        auth_info_2=os.environ["X_EMAIL"],
-        password=os.environ["X_PASSWORD"]
+    app = TwitterAsync("session")
+    await app.sign_in(
+        os.environ["X_USERNAME"],
+        os.environ["X_PASSWORD"],
+        extra=os.environ.get("X_EMAIL")
     )
 
     results = []
@@ -51,39 +51,52 @@ async def crawl():
             query = f"{tag} lang:{lang} filter:images -filter:retweets"
             print(f"Searching: {query}")
             try:
-                tweets = await client.search_tweet(query, "Latest", count=MAX_PER_TAG)
+                search = await app.search(query, pages=1, wait_time=2, filter_=None)
             except Exception as e:
                 print(f"search error: {e}")
                 continue
 
-            for t in tweets:
-                if t.id in seen:
+            count = 0
+            for tweet in search:
+                if count >= MAX_PER_TAG:
+                    break
+                tid = str(tweet.id)
+                if tid in seen:
                     continue
-                seen.add(t.id)
-                if not t.media:
-                    continue
-                image_urls = [m.get("media_url_https") for m in t.media if m.get("type") == "photo"]
+                seen.add(tid)
+
+                # 画像取得
+                media = getattr(tweet, "media", None) or []
+                image_urls = []
+                for m in media:
+                    mtype = getattr(m, "type", "") or getattr(m, "media_type", "")
+                    url = getattr(m, "media_url_https", None) or getattr(m, "media_url", None)
+                    if mtype == "photo" and url:
+                        image_urls.append(url)
                 if not image_urls:
                     continue
 
-                # 1枚目で判定
                 if not judge_image(image_urls[0]):
                     continue
 
+                user = tweet.author
+                screen_name = getattr(user, "screen_name", None) or getattr(user, "username", "unknown")
+
                 results.append({
-                    "id": t.id,
-                    "url": f"https://twitter.com/{t.user.screen_name}/status/{t.id}",
-                    "user": t.user.screen_name,
-                    "text": t.text[:200],
+                    "id": tid,
+                    "url": f"https://twitter.com/{screen_name}/status/{tid}",
+                    "user": screen_name,
+                    "text": (tweet.text or "")[:200],
                     "image": image_urls[0],
                     "lang": lang,
                     "tag": tag,
-                    "created_at": t.created_at,
+                    "created_at": str(getattr(tweet, "created_on", "") or getattr(tweet, "date", "")),
                     "fetched_at": datetime.now(timezone.utc).isoformat(),
                 })
-                time.sleep(2)  # Gemini RPM対策
+                count += 1
+                time.sleep(2)
 
-    # 既存posts.jsonとマージ（最大200件・新しい順）
+    # マージ
     existing = []
     if os.path.exists(OUTPUT):
         with open(OUTPUT, "r", encoding="utf-8") as f:
@@ -96,7 +109,7 @@ async def crawl():
     os.makedirs("docs", exist_ok=True)
     with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(merged, f, ensure_ascii=False, indent=2)
-    print(f"Saved {len(merged)} posts")
+    print(f"Saved {len(merged)} posts (added {len(results)} new)")
 
 if __name__ == "__main__":
     asyncio.run(crawl())
