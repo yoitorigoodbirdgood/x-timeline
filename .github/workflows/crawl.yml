@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install twikit google-generativeai requests
+          pip install --upgrade --pre twikit google-generativeai requests
 
       - name: Run crawler
         env:
